@@ -29,20 +29,44 @@ export async function POST(req) {
       }),
     });
 
+    // Handle non-OK responses safely
+    if (!response.ok) {
+      const errText = await response.text();
+      try {
+        const errJson = JSON.parse(errText);
+        return Response.json(
+          { error: errJson.error?.message || "Anthropic API error: " + response.status },
+          { status: 502 }
+        );
+      } catch {
+        return Response.json(
+          { error: "Anthropic API returned status " + response.status + ": " + errText.substring(0, 300) },
+          { status: 502 }
+        );
+      }
+    }
+
     const data = await response.json();
 
     if (data.error) {
       return Response.json({ error: data.error.message || "Anthropic API error" }, { status: 502 });
     }
 
-    const text = data.content?.[0]?.text || "";
+    const text = data.content && data.content[0] && data.content[0].text ? data.content[0].text : "";
+
+    if (!text) {
+      return Response.json({ error: "Empty response from Claude" }, { status: 422 });
+    }
 
     try {
-      const clean = text.replace(/```json\s*|```\s*/g, "").trim();
+      const clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(clean);
       return Response.json({ agent: parsed, usage: data.usage });
-    } catch {
-      return Response.json({ error: "Failed to parse agent output. Raw response saved.", raw: text }, { status: 422 });
+    } catch (parseErr) {
+      return Response.json(
+        { error: "Failed to parse agent output: " + parseErr.message, raw: text.substring(0, 1000) },
+        { status: 422 }
+      );
     }
   } catch (err) {
     return Response.json({ error: err.message || "Internal error" }, { status: 500 });
