@@ -1,6 +1,7 @@
 import { MASTER_SYSTEM_PROMPT } from "../../../lib/prompts";
 
 export const runtime = "edge";
+export const maxDuration = 60;
 
 export async function POST(req) {
   try {
@@ -29,20 +30,13 @@ export async function POST(req) {
       }),
     });
 
-    // Handle non-OK responses safely
     if (!response.ok) {
       const errText = await response.text();
       try {
         const errJson = JSON.parse(errText);
-        return Response.json(
-          { error: errJson.error?.message || "Anthropic API error: " + response.status },
-          { status: 502 }
-        );
+        return Response.json({ error: errJson.error?.message || "Anthropic API error: " + response.status }, { status: 502 });
       } catch {
-        return Response.json(
-          { error: "Anthropic API returned status " + response.status + ": " + errText.substring(0, 300) },
-          { status: 502 }
-        );
+        return Response.json({ error: "Anthropic API returned status " + response.status + ": " + errText.substring(0, 300) }, { status: 502 });
       }
     }
 
@@ -59,14 +53,11 @@ export async function POST(req) {
     }
 
     try {
-      const clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      const clean = text.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
       const parsed = JSON.parse(clean);
       return Response.json({ agent: parsed, usage: data.usage });
     } catch (parseErr) {
-      return Response.json(
-        { error: "Failed to parse agent output: " + parseErr.message, raw: text.substring(0, 1000) },
-        { status: 422 }
-      );
+      return Response.json({ error: "Failed to parse agent output: " + parseErr.message, raw: text.substring(0, 1000) }, { status: 422 });
     }
   } catch (err) {
     return Response.json({ error: err.message || "Internal error" }, { status: 500 });
