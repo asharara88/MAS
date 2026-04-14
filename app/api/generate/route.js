@@ -1,7 +1,6 @@
 import { MASTER_SYSTEM_PROMPT } from "../../../lib/prompts";
 
-export const runtime = "edge";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req) {
   try {
@@ -53,11 +52,11 @@ export async function POST(req) {
     }
 
     try {
-      const clean = text.replace(/\`\`\`json/g, "").replace(/\`\`\`/g, "").trim();
+      const clean = text.replace(/```json/g, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(clean);
       return Response.json({ agent: parsed, usage: data.usage });
     } catch (parseErr) {
-      return Response.json({ error: "Failed to parse agent output: " + parseErr.message, raw: text.substring(0, 1000) }, { status: 422 });
+      return Response.json({ error: "Failed to parse: " + parseErr.message, raw: text.substring(0, 1000) }, { status: 422 });
     }
   } catch (err) {
     return Response.json({ error: err.message || "Internal error" }, { status: 500 });
