@@ -113,3 +113,5 @@ Located in Supabase project dhwppkevuquwtavvqaan.
 
 ## This is FAROL's core engine
 The multi-vertical, multi-entity agent generation platform.
+
+<!-- deploy trigger 1776414253413 -->
