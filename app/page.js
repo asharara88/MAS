@@ -691,6 +691,87 @@ function InboxTab() {
 }
 
 // =============================================================
+// History tab — browse saved generated specs from agent_generations
+// =============================================================
+function HistoryTab() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
+  const [filter, setFilter] = useState('completed');
+  const { copy } = useCopy();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    let q = supabase.from('agent_generations')
+      .select('*, entity:entities(name), agent_definition:agent_definitions(agent_name, category)')
+      .order('created_at', { ascending: false }).limit(100);
+    if (filter !== 'all') q = q.eq('status', filter);
+    const { data } = await q;
+    setRows(data || []);
+    setLoading(false);
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
+
+  return (
+    <div className="shell" style={{ display: 'block' }}>
+      <main className="main" style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Generation History</h2>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{rows.length}</span>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{
+            marginLeft: 'auto', background: 'var(--bg)', color: 'var(--text)',
+            border: '1px solid var(--border)', borderRadius: 4, padding: '4px 8px', fontSize: 12
+          }}>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="all">All</option>
+          </select>
+          <button className="btn btn-ghost btn-sm" onClick={load}>Refresh</button>
+        </div>
+        {loading && rows.length === 0 && <div style={{ color: 'var(--text-muted)' }}>Loading...</div>}
+        {!loading && rows.length === 0 && (
+          <div className="empty">
+            <div className="empty-icon">📜</div>
+            <div className="empty-title">No saved generations</div>
+            <div className="empty-desc">Generate an agent spec from the Library tab — it will be saved here automatically.</div>
+          </div>
+        )}
+        {rows.map((r) => (
+          <div key={r.id} style={card}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }} onClick={() => toggle(r.id)}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, marginBottom: 4 }}>
+                  <strong>{r.agent_name || r.agent_id}</strong>
+                  <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--mono)' }}>{r.agent_id}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {r.entity?.name && <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-muted)' }}>{r.entity.name}</span>}
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-muted)' }}>v{r.version}</span>
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-muted)' }}>{r.model}</span>
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-muted)' }}>${Number(r.cost_usd || 0).toFixed(4)}</span>
+                  <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 3, background: 'var(--bg)', color: 'var(--text-muted)' }}>{r.input_tokens}↓ {r.output_tokens}↑</span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6 }}>{timeAgo(r.created_at)} · {expanded[r.id] ? 'click to collapse' : 'click to expand'}</div>
+                {r.error_message && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{r.error_message}</div>}
+              </div>
+              <StatusBadge status={r.status} />
+            </div>
+            {expanded[r.id] && r.output && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <AgentResult agent={r.output} version={r.version} onCopy={copy} />
+              </div>
+            )}
+          </div>
+        ))}
+      </main>
+    </div>
+  );
+}
+
+// =============================================================
 // Root
 // =============================================================
 export default function Home() {
@@ -719,6 +800,7 @@ export default function Home() {
           <button className={`nav-tab ${tab === 'library' ? 'active' : ''}`} onClick={() => setTab('library')}>Library</button>
           <button className={`nav-tab ${tab === 'active' ? 'active' : ''}`} onClick={() => setTab('active')}>Active</button>
           <button className={`nav-tab ${tab === 'runs' ? 'active' : ''}`} onClick={() => setTab('runs')}>Runs</button>
+          <button className={`nav-tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>History</button>
           <button className={`nav-tab ${tab === 'inbox' ? 'active' : ''}`} onClick={() => setTab('inbox')}>
             Inbox{openCount > 0 && <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 3, background: '#f59e0b22', color: '#f59e0b', fontWeight: 700 }}>{openCount}</span>}
           </button>
@@ -727,6 +809,7 @@ export default function Home() {
       {tab === 'library' && <LibraryTab />}
       {tab === 'active' && <ActiveTab />}
       {tab === 'runs' && <RunsTab />}
+      {tab === 'history' && <HistoryTab />}
       {tab === 'inbox' && <InboxTab />}
     </>
   );
