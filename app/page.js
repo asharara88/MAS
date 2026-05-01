@@ -698,6 +698,9 @@ function HistoryTab() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState({});
   const [filter, setFilter] = useState('completed');
+  const [promoting, setPromoting] = useState(null);  // generation id currently being promoted
+  const [promoted, setPromoted] = useState({});       // id -> instance_id once done
+  const [promoteError, setPromoteError] = useState({});
   const { copy } = useCopy();
 
   const load = useCallback(async () => {
@@ -708,12 +711,41 @@ function HistoryTab() {
     if (filter !== 'all') q = q.eq('status', filter);
     const { data } = await q;
     setRows(data || []);
+    // Pre-mark already-promoted ones
+    const ids = (data || []).map(r => r.id);
+    if (ids.length) {
+      const idSet = new Set(ids);
+      const { data: insts } = await supabase.from('agent_instances')
+        .select('id, config')
+        .not('config->>promoted_from_generation_id', 'is', null);
+      const map = {};
+      (insts || []).forEach(i => {
+        const fromId = i.config?.promoted_from_generation_id;
+        if (fromId && idSet.has(fromId)) map[fromId] = i.id;
+      });
+      setPromoted(map);
+    }
     setLoading(false);
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
   const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
+
+  const promote = async (genId, e) => {
+    e.stopPropagation();
+    setPromoting(genId);
+    setPromoteError((p) => ({ ...p, [genId]: null }));
+    try {
+      const { data, error } = await supabase.rpc('promote_generation_to_instance', { p_generation_id: genId });
+      if (error) throw error;
+      setPromoted((p) => ({ ...p, [genId]: data }));
+    } catch (err) {
+      setPromoteError((p) => ({ ...p, [genId]: err.message || String(err) }));
+    } finally {
+      setPromoting(null);
+    }
+  };
 
   return (
     <div className="shell" style={{ display: 'block' }}>
@@ -758,7 +790,36 @@ function HistoryTab() {
                 {r.error_message && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{r.error_message}</div>}
               </div>
               <StatusBadge status={r.status} />
+              {r.status === 'completed' && r.output?.system_prompt && (
+                promoted[r.id] ? (
+                  <span onClick={(e) => e.stopPropagation()} style={{
+                    fontSize: 10, padding: '3px 8px', borderRadius: 3,
+                    background: '#22c55e22', color: '#22c55e', fontWeight: 600,
+                    textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap'
+                  }}>✓ Promoted</span>
+                ) : (
+                  <button
+                    onClick={(e) => promote(r.id, e)}
+                    disabled={promoting === r.id}
+                    className="btn btn-sm"
+                    style={{
+                      fontSize: 10, padding: '3px 8px', borderRadius: 3,
+                      background: promoting === r.id ? '#94a3b822' : '#3b82f622',
+                      color: promoting === r.id ? '#94a3b8' : '#3b82f6',
+                      border: 0, fontWeight: 600, textTransform: 'uppercase',
+                      letterSpacing: '0.05em', cursor: promoting === r.id ? 'wait' : 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}>
+                    {promoting === r.id ? 'Promoting…' : 'Promote'}
+                  </button>
+                )
+              )}
             </div>
+            {promoteError[r.id] && (
+              <div style={{ marginTop: 6, fontSize: 11, color: '#ef4444' }}>
+                Promote failed: {promoteError[r.id]}
+              </div>
+            )}
             {expanded[r.id] && r.output && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 <AgentResult agent={r.output} version={r.version} onCopy={copy} />
